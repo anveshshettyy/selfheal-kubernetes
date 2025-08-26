@@ -9,6 +9,6 @@ prometheus:
     serviceMonitorNamespaceSelector: {}
     podMonitorNamespaceSelector: {}
 
-    etention: 12h
+    retention: 12h
     scrapeInterval: 15s
     evaluationInterval: 15s

@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: 
+  name: selfheal-api
+  namespace: selfheal
+spec:
+  selector: 
+    matchLabels: 
+      app: selfheal-api
+  namespaceSelector: 
+    matchNames:
+      - selfheal
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      scheme: http
+      

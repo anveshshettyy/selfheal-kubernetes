@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hey-load
+  namespace: selfheal
+spec:
+  template:
+    spec:
+      containers:
+      - name: hey
+        image: rakyll/hey
+        args:
+          - "-z"
+          - "30s"          
+          - "-c"
+          - "20"         
+          - "http://app-svc.selfheal.svc.cluster.local/work"
+      restartPolicy: Never
+  backoffLimit: 1

@@ -3,6 +3,8 @@ kind: Service
 metadata: 
   name: app-svc
   namespace: selfheal
+  labels:
+    app: selfheal-api
 spec: 
   selector:
     app: selfheal-api
