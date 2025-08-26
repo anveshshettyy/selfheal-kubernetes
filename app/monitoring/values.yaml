@@ -1,0 +1,14 @@
+grafana:
+  service: 
+    type: ClusterIP
+
+prometheus: 
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    podMonitorNamespaceSelector: {}
+
+    etention: 12h
+    scrapeInterval: 15s
+    evaluationInterval: 15s
