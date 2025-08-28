@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: detector
-          image: your-registry/detector:latest
+          image: anveshshetty/detector:latest
           imagePullPolicy: IfNotPresent
           args: ["/app/config.yaml"]
           ports:

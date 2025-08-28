@@ -11,12 +11,12 @@ spec:
   template:
     metadata:
       labels:
-        app: actuator
+        app: actuator   # matches service selector
     spec:
-      serviceAccountName: selfheal-sa   # needs RBAC to patch deployments/pods
+      serviceAccountName: actuator-sa
       containers:
         - name: actuator
-          image: your-registry/actuator:latest
+          image: anveshshetty/actuator:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080   # actuator API

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: selfheal-api-svc
+  namespace: selfheal
+spec:
+  selector:
+    app: selfheal-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+  type: ClusterIP
