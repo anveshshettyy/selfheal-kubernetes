@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: continuous-load
+  namespace: selfheal
+  labels:
+    app: continuous-load
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: continuous-load
+  template:
+    metadata:
+      labels:
+        app: continuous-load
+    spec:
+      containers:
+        - name: load
+          image: curlimages/curl:8.7.1
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Continuous load started..."
+              while true; do
+                curl -s "http://app-svc.selfheal.svc.cluster.local/work?ms=500" > /dev/null || true
+                sleep 0.1
+              done

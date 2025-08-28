@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: delete-random-pod
+  namespace: selfheal
+spec:
+  template:
+    spec:
+      serviceAccountName: chaos-sa
+      restartPolicy: Never
+      containers:
+        - name: killer
+          image: bitnami/kubectl:1.30
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Candidate pods:"
+              kubectl get pods -l app=selfheal-api -o name || true
+              target=$(kubectl get pods -l app=selfheal-api -o name | head -n1 | sed 's#pod/##')
+              if [ -z "$target" ]; then 
+                echo "No target pods found"
+                exit 1
+              fi
+              echo "Deleting $target"
+              kubectl delete pod "$target" --grace-period=0 --force
+              echo "Deleted $target"
+  backoffLimit: 0
