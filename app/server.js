@@ -1,5 +1,6 @@
 import express from 'express';
 import client from 'prom-client';
+import actuatorRoutes from './routes/actuator.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,5 +52,7 @@ app.get('/metrics', async (req, res) => {
     res.set('Content-Type', register.contentType);
     res.end(await register.metrics());
 });
+
+app.use("/actuator", actuatorRoutes);
 
 app.listen(PORT, () => console.log(`selfheal-api listening on :${PORT}`));

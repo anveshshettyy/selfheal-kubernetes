@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: actuator
+  namespace: selfheal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: actuator
+  template:
+    metadata:
+      labels:
+        app: actuator
+    spec:
+      serviceAccountName: selfheal-sa   # needs RBAC to patch deployments/pods
+      containers:
+        - name: actuator
+          image: your-registry/actuator:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080   # actuator API
+            - containerPort: 9200   # actuator metrics
