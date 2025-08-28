@@ -1,0 +1,29 @@
+prometheus:
+  url: "http://localhost:9090"
+poll_interval_seconds: 15
+baseline_window_seconds: 3600   # 1 hour
+metrics:
+  - name: "rps"
+    promql: 'sum(rate(http_requests_total{namespace="selfheal"}[1m]))'
+    detection: 
+      method: "zscore"
+      threshold: 3.0
+      consecutive: 2
+      action: "scale_up"
+  - name: "p95_latency"
+    promql: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="selfheal"}[5m])) by (le))'
+    detection:
+      method: "slope"
+      slope_threshold: 0.3
+      consecutive: 2
+      action: "scale_up"
+  - name: "mem_total"
+    promql: 'sum(container_memory_usage_bytes{namespace="selfheal",pod=~"selfheal-api.*"})'
+    detection:
+      method: "zscore"
+      threshold: 2.5
+      consecutive: 1
+      action: "restart_pod"
+cooldown_seconds: 300   # don't take another action for same target within 5m
+dry_run: false
+actuator_endpoint: "http://selfheal-api.selfheal.svc.cluster.local:3000/actuator/restart"

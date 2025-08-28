@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: actuator
+  namespace: selfheal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: actuator
+  template:
+    metadata:
+      labels:
+        app: actuator
+    spec:
+      serviceAccountName: actuator-sa
+      containers:
+        - name: actuator
+          image: your-registry/actuator:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: COOLDOWN_SECONDS
+              value: "300"
+            - name: SCALE_STEP
+              value: "2"
