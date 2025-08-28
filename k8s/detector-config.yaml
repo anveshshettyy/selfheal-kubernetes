@@ -33,4 +33,4 @@ data:
           action: "restart_pod"
     cooldown_seconds: 300   # don't take another action for same target within 5m
     dry_run: false
-    actuator_endpoint: "http://actuator.selfheal.svc.cluster.local:3000/restart"
+    actuator_endpoint: "http://actuator-svc.selfheal.svc.cluster.local/restart"

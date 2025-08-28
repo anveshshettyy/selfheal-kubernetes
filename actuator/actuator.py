@@ -88,4 +88,4 @@ async def do_action(req: ActionRequest):
 if __name__ == "__main__":
     start_http_server(9200)  # metrics for actuator
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=5000)

@@ -3,7 +3,7 @@ import client from 'prom-client';
 import actuatorRoutes from './routes/actuator.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 const register = new client.Registry();
 client.collectDefaultMetrics({ register });
@@ -52,6 +52,8 @@ app.get('/metrics', async (req, res) => {
     res.set('Content-Type', register.contentType);
     res.end(await register.metrics());
 });
+
+
 
 app.use("/actuator", actuatorRoutes);
 
