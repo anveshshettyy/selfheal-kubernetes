@@ -25,7 +25,7 @@ def query_range(prom_url, query, start_ts, end_ts, step):
     for series in res:
         for ts, val in series['values']:
             tsmap[ts] = tsmap.get(ts, 0.0) + float(val)
-    # return sorted values
+    # return sorted values  
     items = sorted((float(k), v) for k,v in tsmap.items())
     return items
 

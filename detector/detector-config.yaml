@@ -7,8 +7,8 @@ metrics:
     promql: 'sum(rate(http_requests_total{namespace="selfheal"}[1m]))'
     detection: 
       method: "zscore"
-      threshold: 0.5
-      # threshold: 3.0
+      # threshold: 0.5
+      threshold: 3.0
       consecutive: 2
       action: "scale_up"
   - name: "p95_latency"
@@ -22,8 +22,8 @@ metrics:
     promql: 'sum(container_memory_usage_bytes{namespace="selfheal",pod=~"selfheal-api.*"})'
     detection:
       method: "zscore"
-      threshold: 0.5
-      # threshold: 2.5
+      # threshold: 0.5
+      threshold: 2.5
       consecutive: 1
       action: "restart_pod"
 cooldown_seconds: 300   # don't take another action for same target within 5m
