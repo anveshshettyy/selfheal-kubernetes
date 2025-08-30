@@ -1,140 +1,123 @@
-import time, requests, yaml, math
-from collections import deque
-import numpy as np
-from prometheus_client import start_http_server, Counter, Gauge
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pathlib
 
-# metrics exported
-ANOMALIES = Counter('detector_anomalies_total','anomalies detected')
-ACTIONS_SENT = Counter('detector_actions_sent_total','actions sent to actuator')
 
-def query_range(prom_url, query, start_ts, end_ts, step):
-    params = {'query': query, 'start': start_ts, 'end': end_ts, 'step': step}
-    r = requests.get(prom_url + "/api/v1/query_range", params=params, timeout=10)
-    r.raise_for_status()
-    data = r.json()
-    if data['status'] != 'success': 
-        return []
-    # assume a single vector/time-series -> we reduce by summing points per timestamp if needed
-    # simplified: take first result, calculate values
-    res = data['data']['result']
-    if not res:
-        return []
-    # merge results by timestamp: sum across series if multiple series (e.g., per pod)
-    # build dict timestamp->value sum
-    tsmap = {}
-    for series in res:
-        for ts, val in series['values']:
-            tsmap[ts] = tsmap.get(ts, 0.0) + float(val)
-    # return sorted values  
-    items = sorted((float(k), v) for k,v in tsmap.items())
-    return items
+import time, yaml, collections
+# from models import RootCfg
+# from prom import Prom
+# from state import Cooldowns, Budgets
+# from utils import LOG, ANOMALIES, ACTIONS, VALUES
+# from detection import zscore, slope as slope_mod, ewma as ewma_mod, window as window_mod
+# from actions import k8s as k8s_act, http as http_act
+# from prometheus_client import start_http_server
 
-def instant_query(prom_url, query):
-    r = requests.get(prom_url + "/api/v1/query", params={'query': query}, timeout=5)
-    r.raise_for_status()
-    d = r.json()
-    if d['status'] != 'success': return None
-    res = d['data']['result']
-    if not res: return 0.0
-    # sum all series values
-    s=0.0
-    for series in res:
-        val = float(series['value'][1])
-        s += val
-    return s
+from .models import RootCfg
+from .prom import Prom
+from .state import Cooldowns, Budgets
+from .utils import LOG, ANOMALIES, ACTIONS, VALUES
+from .detection import zscore, slope as slope_mod, ewma as ewma_mod, window as window_mod
+from .actions import k8s as k8s_act, http as http_act
+from prometheus_client import start_http_server
 
-class MetricState:
-    def __init__(self, name, config, baseline_mean=0.0, baseline_std=1.0, window_size=8):
-        self.name = name
-        self.config = config
-        self.window = deque(maxlen=window_size)
-        self.baseline_mean = baseline_mean
-        self.baseline_std = baseline_std
-        self.consecutive = 0
+def main():
+    cfg_path = pathlib.Path(__file__).parent / "detector-config.yaml"
+    cfg = RootCfg(**yaml.safe_load(open(cfg_path)))
+    start_http_server(9103)
+    prom = Prom(cfg.prometheus["url"])
+    cooldowns = Cooldowns(cfg.cooldown_seconds)
+    budgets = Budgets(cfg.budgets.get("global_actions_per_hour",9999),
+                      cfg.budgets.get("per_target_per_hour",9999))
 
-def bootstrap_baseline(prom_url, promql, baseline_window, step):
-    end = time.time()
-    start = end - baseline_window
-    samples = query_range(prom_url, promql, start, end, step)
-    if not samples:
-        return 0.0, 1.0
-    vals = [v for ts,v in samples]
-    mean = float(np.mean(vals))
-    std = float(np.std(vals)) if np.std(vals) > 0 else 1.0
-    return mean, std
+    # rings store last N values for slope/ewma; also streaks for window_threshold
+    ring = collections.defaultdict(lambda: collections.deque(maxlen=120))
+    streak = collections.defaultdict(int)
+    inhibit_until = {}
 
-def run_detector(config):
-    prom = config['prometheus']['url']
-    poll = config.get('poll_interval_seconds', 15)
-    baseline_window = config.get('baseline_window_seconds', 3600)
-    metrics_cfg = config['metrics']
-    states = {}
-    # bootstrap
-    for m in metrics_cfg:
-        mean,std = bootstrap_baseline(prom, m['promql'], baseline_window, poll)
-        states[m['name']] = MetricState(m['name'], m, baseline_mean=mean, baseline_std=std)
-        print(f"[bootstrap] {m['name']} mean={mean:.3f} std={std:.3f}")
-    # start prometheus /metrics on 9100 for scraping
-    start_http_server(9100)
+    step = cfg.poll_interval_seconds
+
     while True:
-        for m in metrics_cfg:
-            name = m['name']
-            promql = m['promql']
-            val = instant_query(prom, promql)
-            if val is None:
-                val = 0.0
-            st = states[name]
-            st.window.append(val)
-            # zscore check vs baseline
-            z = 0.0
-            if st.baseline_std > 0:
-                z = abs((val - st.baseline_mean) / st.baseline_std)
-            triggered = False
-            det = m['detection']
-            if det.get('method') == 'zscore':
-                if z >= det.get('threshold', 3.0):
-                    triggered = True
-            elif det.get('method') == 'slope':
-                # simple slope: linear regression on window
-                arr = np.array(st.window)
-                if len(arr) >= 3:
-                    x = np.arange(len(arr))
-                    A = np.vstack([x, np.ones(len(x))]).T
-                    slope, _ = np.linalg.lstsq(A, arr, rcond=None)[0]
-                    if slope >= det.get('slope_threshold', 0.1):
-                        triggered = True
-            # consecutive logic
-            if triggered:
-                st.consecutive += 1
-            else:
-                st.consecutive = 0
-            if st.consecutive >= det.get('consecutive', 1):
-                ANOMALIES.inc()
-                print(f"[ANOMALY] metric={name} val={val} z={z:.2f} consecutive={st.consecutive}")
-                # send action
-                action = det.get('action', 'restart_pod')
-                payload = {
-                    'metric': name,
-                    'value': val,
-                    'zscore': z,
-                    'action': action,
-                    'details': {'promql': promql}
-                }
-                if not config.get('dry_run', True):
-                    try:
-                        r = requests.post(config['actuator_endpoint'], json=payload, timeout=5)
-                        r.raise_for_status()
-                        ACTIONS_SENT.inc()
-                        print("[sent] to actuator:", payload)
-                    except Exception as e:
-                        print("actuator call fail:", e)
-                else:
-                    print("dry_run enabled — not calling actuator. payload:", payload)
-                # reset consecutive to avoid repeated calls until cooldown handled by actuator
-                st.consecutive = 0
-        time.sleep(poll)
+        tnow = time.time()
+
+        # check inhibitions
+        for inh in cfg.inhibit:
+            met = inh["when_metric"]
+            if inhibit_until.get(met,0) > tnow: pass
+
+        for m in cfg.metrics:
+            try:
+                value = prom.instant(m.promql)
+                LOG.info("metric %s = %s", m.name, value)
+                VALUES.labels(m.name).set(value)
+                ring[m.name].append(value)
+
+                fired = False
+                d = m.detection
+
+                if d.method == "zscore":
+                    fired = zscore.check(value, list(ring[m.name]), d.threshold, d.consecutive)
+                elif d.method == "slope":
+                    fired = slope_mod.check(list(ring[m.name]), d.slope_threshold)
+                elif d.method == "ewma_zscore":
+                    fired = ewma_mod.check(value, list(ring[m.name]), d.z_threshold, d.span_seconds, step)
+                elif d.method == "window_threshold":
+                    streak[m.name] = streak[m.name] + step if (d.gt is not None and value > d.gt) else 0
+                    fired = window_mod.check(value, d.gt, d.for_seconds, streak[m.name])
+
+                if not fired:
+                    continue
+
+                # inhibition gate
+                inhibited = False
+                for inh in cfg.inhibit:
+                    if m.name == inh.get("when_metric"):
+                        inhibit_until[m.name] = tnow + inh["suppress_actions_for_seconds"]
+                        inhibited = True
+                if inhibited:
+                    LOG.warning("Inhibited by %s", m.name)
+                    continue
+
+                # cooldown
+                target_key = f"{m.action.type}:{m.action.target.namespace}:{m.action.target.name or m.action.target.selector or 'NA'}"
+                if not cooldowns.allow(target_key):
+                    LOG.info("Cooldown active for %s", target_key); continue
+
+                # budget
+                if not budgets.allow(target_key):
+                    LOG.warning("Budget exceeded for %s", target_key); continue
+
+                ANOMALIES.labels(m.name).inc()
+
+                if cfg.dry_run:
+                    LOG.warning("[dry-run] Would act: %s on %s", m.action.type, target_key)
+                    continue
+
+                ok, msg = execute_action(m.action.type, m.action.target, cfg)
+                ACTIONS.labels(m.action.type, target_key).inc()
+                LOG.warning("Action %s => %s | %s", m.action.type, "OK" if ok else "FAIL", msg)
+
+            except Exception as e:
+                LOG.exception("metric %s failed: %s", m.name, e)
+
+        time.sleep(step)
+
+def execute_action(action_type, target, cfg):
+    t = target.dict()
+    if action_type == "restart_pod":
+        return k8s_act.restart_pod(t["namespace"], t["selector"])
+    if action_type == "rollout_restart":
+        return k8s_act.rollout_restart(t["namespace"], t["name"])
+    if action_type == "scale_deployment":
+        return k8s_act.scale_deployment(t["namespace"], t["name"], t["factor"], t["max"])
+    if action_type == "scale_up":
+        return k8s_act.scale_deployment(t["namespace"], t["name"], 2, t.get("max",10))
+    if action_type == "http_post":
+        ep = cfg.actuator["endpoint"].rstrip("/")
+        tok = cfg.actuator.get("tokens",{}).get("default")
+        return http_act.post(f"{ep}/task", {"target":t}, tok)
+    if action_type == "defer":
+        return True, "deferred by policy"
+    return False, f"unknown action {action_type}"
 
 if __name__ == "__main__":
-    import sys, os
-    cfg = yaml.safe_load(open(sys.argv[1])) if len(sys.argv) > 1 else yaml.safe_load(open('detector-config.yaml'))
-    run_detector(cfg)
+    main()

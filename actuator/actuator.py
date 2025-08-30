@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # actuator/actuator.py
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import time, threading
+import time
 from kubernetes import client, config
 from prometheus_client import start_http_server, Counter, Gauge
 
-# metrics
-ACTIONS = Counter('actuator_actions_total','actions executed')
-LAST_ACTION = Gauge('actuator_last_action_timestamp','last action timestamp')
+# Prometheus metrics
+ACTIONS = Counter('actuator_actions_total', 'actions executed')
+LAST_ACTION = Gauge('actuator_last_action_timestamp', 'last action timestamp')
 
-# load kube config (in-cluster preferred)
+# Load Kubernetes config (in-cluster preferred)
 try:
     config.load_incluster_config()
 except:
@@ -19,17 +19,17 @@ except:
 apps = client.AppsV1Api()
 core = client.CoreV1Api()
 
-# simple in-memory cooldown store
+# Cooldown store
 cooldown_store = {}
 
-# policy: how much to scale on scale_up
+# Policy
 SCALE_STEP = 2
 COOLDOWN = 300  # seconds
 
 class ActionRequest(BaseModel):
     metric: str
     value: float
-    zscore: float = None
+    zscore: float | None = None
     action: str
     details: dict = {}
 
@@ -46,16 +46,15 @@ def record_action(target_key):
 
 @app.post("/action")
 async def do_action(req: ActionRequest):
-    # map action
     action = req.action
-    target_key = "selfheal-api"  # could be refined per-pod if detector sends pod
+    target_key = "selfheal-api"
+    
     if not can_take(target_key):
         raise HTTPException(status_code=429, detail="In cooldown")
+    
     if action == 'scale_up':
-        # scale deployment
         ns = 'selfheal'
         name = 'selfheal-api'
-        # fetch current
         dep = apps.read_namespaced_deployment(name, ns)
         cur = dep.spec.replicas or 1
         new = cur + SCALE_STEP
@@ -63,9 +62,9 @@ async def do_action(req: ActionRequest):
         apps.patch_namespaced_deployment(name, ns, body)
         record_action(target_key)
         ACTIONS.inc()
-        return {"status":"scaled","from":cur,"to":new}
+        return {"status": "scaled", "from": cur, "to": new}
+    
     elif action == 'restart_pod':
-        # choose a pod to delete
         pods = core.list_namespaced_pod('selfheal', label_selector='app=selfheal-api')
         if not pods.items:
             raise HTTPException(status_code=404, detail="no pods found")
@@ -73,19 +72,33 @@ async def do_action(req: ActionRequest):
         core.delete_namespaced_pod(target, 'selfheal', grace_period_seconds=0)
         record_action(target_key)
         ACTIONS.inc()
-        return {"status":"deleted_pod","pod":target}
+        return {"status": "deleted_pod", "pod": target}
+    
     elif action == 'rollout_restart':
-        ns='selfheal'; name='selfheal-api'
-        # patch annotation to trigger rollout
-        body = {"spec":{"template":{"metadata":{"annotations":{"selfheal/restartedAt": str(int(time.time()))}}}}}
-        apps.patch_namespaced_deployment(name,ns,body)
+        ns = 'selfheal'
+        name = 'selfheal-api'
+        body = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "selfheal/restartedAt": str(int(time.time()))
+                        }
+                    }
+                }
+            }
+        }
+        apps.patch_namespaced_deployment(name, ns, body)
         record_action(target_key)
         ACTIONS.inc()
-        return {"status":"rolled","deployment":name}
+        return {"status": "rolled", "deployment": name}
+    
     else:
         raise HTTPException(status_code=400, detail="unknown action")
 
 if __name__ == "__main__":
-    start_http_server(9200)  # metrics for actuator
+    # Start Prometheus metrics on 9200
+    start_http_server(9200)
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    # Actuator API on 8080 (matches Dockerfile + Deployment)
+    uvicorn.run(app, host="0.0.0.0", port=8080)

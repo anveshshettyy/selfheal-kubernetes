@@ -1,32 +1,101 @@
 prometheus:
   url: "http://localhost:9090"
 poll_interval_seconds: 15
-baseline_window_seconds: 3600   # 1 hour
+baseline_window_seconds: 7200    # 2h baseline
+cooldown_seconds: 300
+dry_run: false
+
+budgets:
+  global_actions_per_hour: 20
+  per_target_per_hour: 5
+
 metrics:
+  # Traffic / errors — RED
   - name: "rps"
     promql: 'sum(rate(http_requests_total{namespace="selfheal"}[1m]))'
-    detection: 
-      method: "zscore"
-      # threshold: 0.5
-      threshold: 3.0
+    detection:
+      method: "ewma_zscore"
+      z_threshold: 3.0
+      span_seconds: 300
       consecutive: 2
-      action: "scale_up"
+    action:
+      type: "scale_deployment"
+      target: { namespace: "selfheal", name: "selfheal-api", factor: 2, max: 10 }
+
+  - name: "error_rate"
+    promql: 'sum(rate(http_requests_total{namespace="selfheal",status=~"5.."}[1m])) / clamp_min(sum(rate(http_requests_total{namespace="selfheal"}[1m])), 1)'
+    detection:
+      method: "window_threshold"
+      gt: 0.05        # >5% errors
+      for_seconds: 90
+    action:
+      type: "rollout_restart"
+      target: { namespace: "selfheal", name: "selfheal-api" }
+
+  # Latency p95 — user pain
   - name: "p95_latency"
     promql: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="selfheal"}[5m])) by (le))'
     detection:
       method: "slope"
-      slope_threshold: 0.3
+      slope_threshold: 0.35
       consecutive: 2
-      action: "scale_up"
-  - name: "mem_total"
-    promql: 'sum(container_memory_usage_bytes{namespace="selfheal",pod=~"selfheal-api.*"})'
+    action:
+      type: "scale_deployment"
+      target: { namespace: "selfheal", name: "selfheal-api", factor: 2, max: 10 }
+
+  # Memory — working set
+  - name: "mem_working_set"
+    promql: 'sum(container_memory_working_set_bytes{namespace="selfheal",pod=~"selfheal-api.*"})'
     detection:
       method: "zscore"
-      # threshold: 0.5
       threshold: 2.5
       consecutive: 1
-      action: "restart_pod"
-cooldown_seconds: 300   # don't take another action for same target within 5m
-dry_run: false
-actuator_endpoint: "http://localhost:8080/actuator/restart"
+    action:
+      type: "restart_pod"
+      target: { namespace: "selfheal", selector: "app=selfheal-api" }
 
+  # OOM / restarts — immediate
+  - name: "restarts"
+    promql: 'sum(increase(kube_pod_container_status_restarts_total{namespace="selfheal", pod=~"selfheal-api.*"}[5m]))'
+    detection:
+      method: "window_threshold"
+      gt: 1
+      for_seconds: 0
+    action:
+      type: "rollout_restart"
+      target: { namespace: "selfheal", name: "selfheal-api" }
+
+  # Node pressure — back off scaling when cluster is sick
+  - name: "node_pressure"
+    promql: 'max(kube_node_status_condition{condition="MemoryPressure",status="true"})'
+    detection:
+      method: "window_threshold"
+      gt: 0
+      for_seconds: 60
+    action:
+      type: "rollout_restart"
+      target: 
+        namespace: selfheal
+        name: selfheal-api
+
+  # Network errors (TCP resets to pods)
+  - name: "net_errors"
+    promql: 'sum(rate(container_network_receive_errors_total{namespace="selfheal"}[2m])) + sum(rate(container_network_transmit_errors_total{namespace="selfheal"}[2m]))'
+    detection:
+      method: "zscore"
+      threshold: 3
+      consecutive: 2
+    action:
+      type: "restart_pod"
+      target: { namespace: "selfheal", selector: "app=selfheal-api" }
+
+# Action endpoints (for custom HTTP tasks)
+actuator:
+  endpoint: "http://actuator.selfheal.svc.cluster.local:8080"
+  tokens:
+    default: "REDACTED"
+
+# Global inhibitions
+inhibit:
+  - when_metric: "node_pressure"
+    suppress_actions_for_seconds: 600

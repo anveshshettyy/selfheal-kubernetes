@@ -30,6 +30,6 @@ spec:
             - |
               echo "Continuous load started..."
               while true; do
-                curl -s "http://app-svc.selfheal.svc.cluster.local/work?ms=500" > /dev/null || true
+                curl -s "http://selfheal-api-svc.selfheal.svc.cluster.local/work?ms=500" > /dev/null || true
                 sleep 0.1
               done
