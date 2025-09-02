@@ -2,16 +2,16 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata: 
   name: selfheal-api
-  namespace: monitoring   # 👈 MUST be monitoring
+  namespace: monitoring   
   labels:
-    release: monitoring   # 👈 MUST match your Prometheus release
+    release: monitoring  
 spec:
   selector: 
     matchLabels: 
       app: selfheal-api
   namespaceSelector: 
     matchNames:
-      - selfheal          # 👈 your app is in selfheal
+      - selfheal        
   endpoints:
     - port: http
       path: /metrics

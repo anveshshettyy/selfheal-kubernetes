@@ -1,0 +1,40 @@
+# values-min.yaml
+prometheus:
+  enabled: true
+  prometheusSpec:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1
+        memory: 1Gi
+    # Use ephemeral storage to avoid PVC/provisioner drama
+    storageSpec: {}
+    retention: 2d
+    walCompression: true
+    # Make selectors empty so the operator doesn't try to match non-existent objects
+    ruleSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelector: {}
+    probeSelectorNilUsesHelmValues: false
+    # Keep web config dead simple
+    externalUrl: ""
+    routePrefix: /
+alertmanager:
+  enabled: false   # kill complexity for now
+grafana:
+  enabled: true
+  adminPassword: "admin"
+kubeControllerManager:
+  enabled: false   # optional off to save resources
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false

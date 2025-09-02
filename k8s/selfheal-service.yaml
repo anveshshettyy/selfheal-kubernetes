@@ -10,6 +10,6 @@ spec:
     app: selfheal-api
   ports:
     - name: http
-      port: 80
+      port: 3000
       targetPort: 3000
   type: ClusterIP

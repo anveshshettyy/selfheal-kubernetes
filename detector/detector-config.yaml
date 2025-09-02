@@ -11,8 +11,9 @@ budgets:
 
 metrics:
   # Traffic / errors — RED
+  
   - name: "rps"
-    promql: 'sum(rate(http_requests_total{namespace="selfheal"}[1m]))'
+    promql: 'sum(rate(http_request_duration_seconds_count{namespace="selfheal"}[1m]))'
     detection:
       method: "ewma_zscore"
       z_threshold: 3.0

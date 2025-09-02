@@ -6,7 +6,8 @@ metadata:
 data:
   config.yaml: |
     prometheus:
-      url: "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+      url: "http://obs-kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+
     poll_interval_seconds: 15
     baseline_window_seconds: 3600   # 1 hour
     metrics:
