@@ -97,6 +97,10 @@ def main():
                     LOG.warning("🟡 [dry-run] Would act: %s on %s", m.action.type, target_key)
                     continue
 
+                if m.action.type == "scale_down":
+                    LOG.info("📉 Low RPS detected: triggering scale_down on %s", target_key)
+
+
                 # Perform the action
                 ok, msg = execute_action(m.action.type, m.action.target, cfg)
                 ACTIONS.labels(m.action.type, target_key).inc()
@@ -125,6 +129,11 @@ def execute_action(action_type, target, cfg):
         return k8s_act.scale_deployment(t["namespace"], t["name"], t["factor"], t["max"])
     if action_type == "scale_up":
         return k8s_act.scale_deployment(t["namespace"], t["name"], 2, t.get("max", 10))
+    if action_type == "scale_down":
+        dep = k8s_act.get_deployment(t["namespace"], t["name"])
+        cur = dep.spec.replicas or 1
+        new = max(1, cur // 2) 
+        return k8s_act.scale_deployment(t["namespace"], t["name"], new, t.get("max", 10))
     if action_type == "http_post":
         ep = cfg.actuator["endpoint"].rstrip("/")
         tok = cfg.actuator.get("tokens", {}).get("default")

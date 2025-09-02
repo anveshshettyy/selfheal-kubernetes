@@ -64,6 +64,19 @@ async def do_action(req: ActionRequest):
         ACTIONS.inc()
         return {"status": "scaled", "from": cur, "to": new}
     
+    elif action == 'scale_down':  
+        ns = 'selfheal'
+        name = 'selfheal-api'
+        dep = apps.read_namespaced_deployment(name, ns)
+        cur = dep.spec.replicas or 1
+        new = max(cur - SCALE_STEP, 1) 
+        body = {'spec': {'replicas': new}}
+        apps.patch_namespaced_deployment(name, ns, body)
+        record_action(target_key)
+        ACTIONS.inc()
+        return {"status": "scaled_down", "from": cur, "to": new}
+
+    
     elif action == 'restart_pod':
         pods = core.list_namespaced_pod('selfheal', label_selector='app=selfheal-api')
         if not pods.items:

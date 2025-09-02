@@ -23,6 +23,18 @@ metrics:
       type: "scale_deployment"
       target: { namespace: "selfheal", name: "selfheal-api", factor: 2, max: 10 }
 
+  - name: "rps_low"
+    promql: 'sum(rate(http_request_duration_seconds_count{namespace="selfheal"}[1m]))'
+    detection:
+      method: "ewma_zscore"
+      z_threshold: -2.0   # negative threshold for low traffic
+      span_seconds: 300
+      consecutive: 2
+    action:
+      type: "scale_down"
+      target: { namespace: "selfheal", name: "selfheal-api", factor: 2, min: 1 }
+
+
   - name: "error_rate"
     promql: 'sum(rate(http_requests_total{namespace="selfheal",status=~"5.."}[1m])) / clamp_min(sum(rate(http_requests_total{namespace="selfheal"}[1m])), 1)'
     detection:
