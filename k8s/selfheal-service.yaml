@@ -5,6 +5,10 @@ metadata:
   namespace: selfheal
   labels:
     app: selfheal-api
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
 spec:
   selector:
     app: selfheal-api

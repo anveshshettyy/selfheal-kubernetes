@@ -4,7 +4,7 @@ metadata:
   name: selfheal-api
   namespace: monitoring   
   labels:
-    release: monitoring  
+    release: obs
 spec:
   selector: 
     matchLabels: 

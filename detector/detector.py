@@ -36,6 +36,8 @@ def main():
     while True:
         tnow = time.time()
 
+
+        LOG.info("-------------------------")
         # check inhibitions
         for inh in cfg.inhibit:
             met = inh["when_metric"]
@@ -130,10 +132,7 @@ def execute_action(action_type, target, cfg):
     if action_type == "scale_up":
         return k8s_act.scale_deployment(t["namespace"], t["name"], 2, t.get("max", 10))
     if action_type == "scale_down":
-        dep = k8s_act.get_deployment(t["namespace"], t["name"])
-        cur = dep.spec.replicas or 1
-        new = max(1, cur // 2) 
-        return k8s_act.scale_deployment(t["namespace"], t["name"], new, t.get("max", 10))
+        return k8s_act.scale_down(t["namespace"], t["name"], min_replicas=1)
     if action_type == "http_post":
         ep = cfg.actuator["endpoint"].rstrip("/")
         tok = cfg.actuator.get("tokens", {}).get("default")
