@@ -53,6 +53,9 @@ app.get('/metrics', async (req, res) => {
     res.end(await register.metrics());
 });
 
+app.get("/fail", (req, res) => {
+  res.status(500).send("Simulated failure");
+});
 
 
 app.use("/actuator", actuatorRoutes);

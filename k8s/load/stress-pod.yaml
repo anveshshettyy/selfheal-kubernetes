@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stress-pod
+  namespace: selfheal
+spec:
+  containers:
+  - name: stress
+    image: polinux/stress
+    command: ["stress"]
+    args: ["--vm", "1", "--vm-bytes", "150M", "--timeout", "60s"]
+    resources:
+      requests:
+        memory: "100Mi"
+      limits:
+        memory: "200Mi"

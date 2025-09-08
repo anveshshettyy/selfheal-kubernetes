@@ -36,11 +36,12 @@ metrics:
 
 
   - name: "error_rate"
-    promql: 'sum(rate(http_requests_total{namespace="selfheal",status=~"5.."}[1m])) / clamp_min(sum(rate(http_requests_total{namespace="selfheal"}[1m])), 1)'
+    promql: '100 * sum(rate(http_request_duration_seconds_count{namespace="selfheal", code=~"5.."}[1m])) / clamp_min(sum(rate(http_request_duration_seconds_count{namespace="selfheal"}[1m])), 1) OR vector(0)'
     detection:
       method: "window_threshold"
-      gt: 0.05        # >5% errors
-      for_seconds: 90
+      gt: 5
+      for_seconds: 15
+      # for_seconds: 60
     action:
       type: "rollout_restart"
       target: { namespace: "selfheal", name: "selfheal-api" }

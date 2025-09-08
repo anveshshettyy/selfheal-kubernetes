@@ -21,8 +21,8 @@ spec:
     spec:
       containers:
         - name: api
-          image: selfheal-api:0.1
-          imagePullPolicy: IfNotPresent
+          image: anveshshetty/node-app:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           resources:
